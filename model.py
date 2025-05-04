@@ -4,6 +4,7 @@ Simplified FOLFOX model for simulating body response.
 import numpy as np
 from typing import Dict
 from params import FOLFOXParams
+import math
 
 
 class FOLFOXModel:
@@ -16,10 +17,18 @@ class FOLFOXModel:
         self.horizon = params.optimization.horizon_days
         self.T = int(self.horizon / self.dt) # Number of steps
 
-        # Pre-calculate dose limits and thresholds in absolute mg
-        self.max_daily_5fu_mg = params.dosing.max_daily_5fu_mg_m2 * params.dosing.bsa_m2
-        self.max_single_ox_mg = params.dosing.max_single_ox_mg_m2 * params.dosing.bsa_m2
-        self.chronic_neuro_thresh_mg = params.neuropathy.chronic_neuropathy_threshold_mg
+        # Calculate BSA using the Du Bois formula
+        weight_kg = params.dosing.patient_weight_kg
+        height_cm = params.dosing.patient_height_cm
+        if weight_kg <= 0 or height_cm <= 0:
+             raise ValueError("Patient weight and height must be positive.")
+        self.bsa_m2 = math.sqrt((height_cm * weight_kg) / 3600.0)
+
+        # Pre-calculate dose limits and thresholds in absolute mg using calculated BSA
+        self.max_daily_5fu_mg = params.dosing.max_daily_5fu_mg_m2 * self.bsa_m2
+        self.max_single_ox_mg = params.dosing.max_single_ox_mg_m2 * self.bsa_m2
+        # Calculate absolute chronic neuro threshold using BSA
+        self.chronic_neuro_thresh_mg = params.neuropathy.chronic_neuropathy_threshold_mg_m2 * self.bsa_m2 
         self.severe_neutropenia_thresh = params.hematology.severe_neutropenia_threshold
 
     def get_dosing_schedule(self) -> (np.ndarray, np.ndarray):
@@ -99,6 +108,7 @@ class FOLFOXModel:
             acute_neuropathy[t+1] = 1 if dose_ox[t] > 0 else 0
             
             # Chronic: Occurs if cumulative dose exceeds threshold
+            # Use the pre-calculated absolute threshold
             if cum_ox[t+1] >= self.chronic_neuro_thresh_mg:
                 chronic_neuropathy[t+1] = 1
             else:
@@ -123,7 +133,8 @@ class FOLFOXModel:
             "acute_neuropathy": acute_neuropathy,
             "chronic_neuropathy": chronic_neuropathy,
             "cum_ox": cum_ox,
-            "utility": utility
+            "utility": utility,
+            "chronic_neuropathy_threshold_mg": np.full(self.T + 1, self.chronic_neuro_thresh_mg) # Add threshold to results
         }
         return results
 

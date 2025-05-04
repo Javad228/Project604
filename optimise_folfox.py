@@ -12,6 +12,7 @@ import sys
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
+import math
 
 from params import FOLFOXParams
 from model import FOLFOXModel
@@ -39,6 +40,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--step", type=int,
         help="Step size for discretization in days (overrides config)"
+    )
+    
+    # Patient specifics
+    parser.add_argument(
+        "--weight", type=float, default=None,
+        help="Patient weight in kg (overrides config)"
+    )
+    parser.add_argument(
+        "--height", type=float, default=None,
+        help="Patient height in cm (overrides config)"
     )
     
     # Output options
@@ -78,6 +89,20 @@ def main() -> int:
     if args.plot:
         overrides.setdefault("outputs", {})["save_plots"] = True
     
+    # Apply patient specifics overrides
+    if args.weight is not None:
+        if args.weight <= 0:
+             print("Error: Patient weight must be positive.", file=sys.stderr)
+             return 1
+        overrides.setdefault("dosing", {})["patient_weight_kg"] = args.weight
+        print(f"Overriding patient weight to: {args.weight} kg")
+    if args.height is not None:
+        if args.height <= 0:
+             print("Error: Patient height must be positive.", file=sys.stderr)
+             return 1
+        overrides.setdefault("dosing", {})["patient_height_cm"] = args.height
+        print(f"Overriding patient height to: {args.height} cm")
+    
     # Apply overrides
     if overrides:
         params.update_from_dict(overrides)
@@ -86,6 +111,17 @@ def main() -> int:
     print(f"Simulation parameters:")
     print(f"  Horizon: {params.optimization.horizon_days} days")
     print(f"  Step size: {params.optimization.step_size_days} days")
+    
+    # Calculate and print BSA based on potentially overridden values
+    try:
+         weight_kg = params.dosing.patient_weight_kg
+         height_cm = params.dosing.patient_height_cm
+         bsa = math.sqrt((height_cm * weight_kg) / 3600.0)
+         print(f"  Patient Weight: {weight_kg} kg")
+         print(f"  Patient Height: {height_cm} cm")
+         print(f"  Calculated BSA: {bsa:.2f} m^2")
+    except Exception as e:
+         print(f"Could not calculate BSA: {e}") # Should not happen with checks above
     
     # Build and run model
     print("\nBuilding simulation model...")

@@ -12,14 +12,15 @@ hematology:
 
 neuropathy:
   # Oxaliplatin-induced peripheral neuropathy (Simplified)
-  chronic_neuropathy_threshold_mg: 1404.0 # Absolute cumulative dose threshold (mg)
+  chronic_neuropathy_threshold_mg_m2: 850.0 # Threshold (mg/m2) for chronic neuropathy
 
 dosing:
   # Dosing constraints
-  max_daily_5fu_mg_m2: 2400   # Maximum daily 5-FU dose (mg/m²)
-  max_single_ox_mg_m2: 85     # Maximum single oxaliplatin dose (mg/m²)
+  max_daily_5fu_mg_m2: 2400.0   # Maximum daily 5-FU dose (mg/m²)
+  max_single_ox_mg_m2: 85.0     # Maximum single oxaliplatin dose (mg/m²)
   min_days_between_ox: 14     # Minimum days between oxaliplatin doses
-  bsa_m2: 1.8                 # Body surface area (m²)
+  patient_weight_kg: 70.0 # Added
+  patient_height_cm: 170.0 # Added
 
 utility:
   # Utility (QALY) parameters (Simplified Additive Model)

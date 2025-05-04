@@ -128,6 +128,7 @@ class FOLFOXAnalyzer:
         acute_neuro = self.results["acute_neuropathy"] # Binary flag
         chronic_neuro = self.results["chronic_neuropathy"] # Binary flag
         cum_ox = self.results["cum_ox"]
+        threshold = self.results['chronic_neuropathy_threshold_mg'][0] # Get threshold from results
         
         fig, ax1 = plt.subplots(figsize=(10, 6))
         
@@ -150,7 +151,6 @@ class FOLFOXAnalyzer:
         ax2.tick_params(axis='y', labelcolor=color_ox)
         
         # Mark absolute threshold
-        threshold = self.params.neuropathy.chronic_neuropathy_threshold_mg
         ax2.axhline(y=threshold, color='grey', linestyle=':', 
                    label=f"Chronic Threshold ({threshold:.0f} mg)")
         
@@ -216,8 +216,11 @@ class FOLFOXAnalyzer:
         summary['mean_utility'] = np.mean(utility) if len(utility) > 0 else self.params.utility.baseline_utility
         
         # Find onset day for chronic neuropathy
-        chronic_onset_indices = np.where(chronic_neuro > 0.5)[0] # Indices where chronic=1
-        summary['chronic_neuropathy_onset_day'] = time[chronic_onset_indices[0]] if len(chronic_onset_indices) > 0 else -1 # Day of first onset, -1 if never
+        chronic_flags = self.results['chronic_neuropathy']
+        onset_idx = np.where(chronic_flags == 1)[0]
+        summary['chronic_neuropathy_onset_day'] = time[onset_idx[0]] if len(onset_idx) > 0 else -1
+        # Add threshold used to summary
+        summary['chronic_neuropathy_threshold_mg'] = self.results['chronic_neuropathy_threshold_mg'][0]
         
         # Removed tumor, QALY gain, cost calculations
         analysis_results["summary"] = summary

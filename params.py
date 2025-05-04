@@ -23,16 +23,17 @@ class HematologyParams:
 @dataclass
 class NeuropathyParams:
     """Parameters for oxaliplatin-induced peripheral neuropathy."""
-    chronic_neuropathy_threshold_mg: float = 1404.0 # Absolute cumulative dose threshold (mg), calculated (e.g., 780 mg/m2 * 1.8 m2)
+    chronic_neuropathy_threshold_mg_m2: float = 850.0 # Threshold (mg/m2) for chronic neuropathy
 
 
 @dataclass
 class DosingParams:
-    """Parameters for dosing constraints."""
-    max_daily_5fu_mg_m2: float  # Maximum daily 5-FU dose (mg/m²)
-    max_single_ox_mg_m2: float  # Maximum single oxaliplatin dose (mg/m²)
-    min_days_between_ox: int    # Minimum days between oxaliplatin doses
-    bsa_m2: float               # Body surface area (m²)
+    """Parameters related to chemotherapy dosing."""
+    max_daily_5fu_mg_m2: float  # Max rate for 5FU infusion (mg/m2/day)
+    max_single_ox_mg_m2: float  # Max single bolus dose for Oxaliplatin (mg/m2)
+    min_days_between_ox: int    # Minimum days between Oxaliplatin doses
+    patient_weight_kg: float    # Patient weight in kilograms
+    patient_height_cm: float    # Patient height in centimeters
 
 
 @dataclass
