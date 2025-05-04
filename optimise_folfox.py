@@ -9,15 +9,14 @@ This tool builds and runs a simulation model that predicts daily
 """
 import argparse
 import sys
-import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
+import numpy as np # Needed for average utility calculation
 import math
 
 from params import FOLFOXParams
 from model import FOLFOXModel
 from analyse import FOLFOXAnalyzer
-
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
@@ -86,8 +85,6 @@ def main() -> int:
         overrides.setdefault("optimization", {})["step_size_days"] = args.step
     if args.output:
         overrides.setdefault("outputs", {})["results_dir"] = args.output
-    if args.plot:
-        overrides.setdefault("outputs", {})["save_plots"] = True
     
     # Apply patient specifics overrides
     if args.weight is not None:
@@ -102,13 +99,22 @@ def main() -> int:
              return 1
         overrides.setdefault("dosing", {})["patient_height_cm"] = args.height
         print(f"Overriding patient height to: {args.height} cm")
-    
+
+    # --- Update params based on CLI flags ---
+    # Ensure plotting flag overrides config
+    if args.plot:
+        params.outputs.save_plots = True
+        print("Plot generation enabled via command line flag.")
+    elif not hasattr(params.outputs, 'save_plots'): # Handle case where param might be missing
+        print("Warning: 'outputs.save_plots' not found in config, defaulting to False.")
+        params.outputs.save_plots = False
+
     # Apply overrides
     if overrides:
         params.update_from_dict(overrides)
     
     # Print simulation parameters
-    print(f"Simulation parameters:")
+    print("\nSimulation Setup:")
     print(f"  Horizon: {params.optimization.horizon_days} days")
     print(f"  Step size: {params.optimization.step_size_days} days")
     
@@ -123,32 +129,83 @@ def main() -> int:
     except Exception as e:
          print(f"Could not calculate BSA: {e}") # Should not happen with checks above
     
-    # Build and run model
-    print("\nBuilding simulation model...")
-    model = FOLFOXModel(params)
+    # --- Optimization Loop --- 
+    print("\nFinding optimal number of cycles...")
+    cycle_len_days = 14
+    horizon_days = params.optimization.horizon_days
+    max_possible_cycles = int(horizon_days // cycle_len_days) # Floor division
     
-    print("Running simulation...")
+    best_avg_utility = -np.inf # Initialize with a very low value
+    optimal_cycle_count = 0
+    best_results = None # Store results for the best cycle count
+
+    for n_cycles in range(max_possible_cycles + 1): # Test from 0 to max_possible_cycles
+        print(f"  Simulating with {n_cycles} cycles...")
+        try:
+            # Instantiate model inside loop if parameters affect initialization beyond BSA
+            # (Currently, they don't significantly, so could optimize later if slow)
+            model = FOLFOXModel(params)
+            results = model.solve(num_cycles_to_administer=n_cycles)
+            
+            # Calculate average utility (excluding t=0)
+            avg_utility = np.mean(results['utility'][1:]) if len(results['utility']) > 1 else params.utility.baseline_utility
+            print(f"    Average Utility: {avg_utility:.4f}")
+
+            if avg_utility > best_avg_utility:
+                best_avg_utility = avg_utility
+                optimal_cycle_count = n_cycles
+                best_results = results # Save the full results dict for the best case
+                
+        except Exception as e:
+            print(f"    Error during simulation for {n_cycles} cycles: {e}")
+            # Decide how to handle errors: stop, continue, etc.
+            # For now, we'll just report and continue searching
+            # import traceback
+            # traceback.print_exc()
+
+    if best_results is None:
+         print("\nError: No successful simulations completed. Cannot determine optimum.", file=sys.stderr)
+         return 1
+         
+    print(f"\nOptimization finished. Optimal number of cycles: {optimal_cycle_count} (Avg Utility: {best_avg_utility:.4f})")
+
+    # --- Final Analysis using Optimal Results --- 
+    print("Analyzing results for optimal cycle count...")
+    output_dir = Path(params.outputs.results_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
     try:
-        results = model.solve()
+        # Instantiate the analyzer with the best results
+        analyzer = FOLFOXAnalyzer(params, best_results)
+        # Call the analyze method which handles saving files/plots
+        # Plotting is controlled by params.outputs.save_plots inside the analyze method
+        analysis_dict = analyzer.analyze() 
+        print(f"Optimal results saved to {output_dir}")
     except Exception as e:
-        print(f"Error running simulation: {e}")
+        print(f"Error during final results analysis or saving: {e}", file=sys.stderr)
+        # import traceback
+        # traceback.print_exc()
         return 1
-    
-    # Analyze results
-    print("\nAnalyzing results...")
-    analyzer = FOLFOXAnalyzer(params, results)
-    analysis = analyzer.analyze()
-    
-    # Print summary
-    print("\nSimulation Results Summary:")
-    print(f"  Cumulative oxaliplatin: {analysis['summary'].get('cumulative_ox', 'N/A'):.1f} mg")
-    
-    print(f"\nResults saved to {params.outputs.results_dir}/")
-    if params.outputs.save_plots:
-        print(f"Plots generated:")
-        for plot in analysis['plots']:
-            print(f"  {Path(plot).name}")
-    
+
+    # Print summary from the dictionary returned by analyze
+    if "summary" in analysis_dict:
+         try:
+             summary = analysis_dict["summary"]
+             print("\nOptimal Results Summary:")
+             print(f"  Optimal Cycles Run: {optimal_cycle_count}") 
+             print(f"  Min ANC: {summary.get('min_anc', 'N/A'):.2f}")
+             print(f"  Cumulative Oxaliplatin: {summary.get('cumulative_ox', 'N/A'):.2f} mg")
+             print(f"  Chronic Neuropathy Threshold: {summary.get('chronic_neuropathy_threshold_mg', 'N/A'):.2f} mg")
+             print(f"  Chronic Neuropathy Onset Day: {summary.get('chronic_neuropathy_onset_day', 'N/A')}")
+             print(f"  Final Utility: {summary.get('final_utility', 'N/A'):.2f}")
+             print(f"  Mean Utility: {summary.get('mean_utility', 'N/A'):.4f}")
+             print(f"  Total Cost: ${summary.get('total_cost', 'N/A'):.2f}")
+             print(f"  Mean Daily Cost: ${summary.get('mean_daily_cost', 'N/A'):.2f}")
+         except Exception as e:
+              print(f"\nError processing summary dictionary: {e}", file=sys.stderr)
+    else:
+         print("\nSummary data not found in analysis results dictionary.")
+
     return 0
 
 

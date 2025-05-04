@@ -26,7 +26,7 @@ utility:
   # Utility (QALY) parameters (Simplified Additive Model)
   baseline_utility: 0.76      # Baseline utility (no side effects)
   neutropenia_penalty: -0.2   # Utility penalty for severe neutropenia
-  neuropathy_penalty: -0.24  # Utility penalty for any neuropathy
+  neuropathy_penalty: -0.24  # Utility loss per step if any neuropathy present
 
 solver:
   # Solver parameters
@@ -40,5 +40,17 @@ optimization:
 
 outputs:
   # Output configuration
-  results_dir: "results"      # Directory for output files
-  save_plots: true            # Whether to save plots
+  results_dir: results
+  save_plots: true # Whether to generate and save plots
+
+# Added Economics section
+economics:
+  cost_5fu_mg: 0.00442
+  cost_ox_mg: 0.10
+  cost_infusion_day: 250.0
+  cost_pump_day: 12.0
+  cost_utility_factor: 0.001 # Adjust this to balance utility vs cost
+
+optimization:
+  horizon_days: 180
+  step_size_days: 1

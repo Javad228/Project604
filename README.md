@@ -10,13 +10,14 @@ It is a simplified version derived from a previous model that included pharmacok
     -   Calculates ANC levels based on baseline, production/loss rates, and dose-dependent toxicity effects of 5-FU and Oxaliplatin.
     -   Tracks cumulative Oxaliplatin dose.
     -   Determines acute neuropathy (binary flag triggered by Oxaliplatin dose) and chronic neuropathy (binary flag triggered when cumulative dose exceeds a threshold).
-    -   Calculates a simple utility score based on a baseline value minus penalties for severe neutropenia and any neuropathy.
+    -   Calculates a simple utility score based on a baseline value minus penalties for severe neutropenia, any neuropathy, and **daily treatment costs**. The impact of cost on utility is scaled by the `cost_utility_factor` parameter.
     -   Uses a predefined, repeating 14-day dosing cycle (can be modified within the code).
 -   **`params.py`**: Defines the data structures (using Python dataclasses) for all model parameters, including:
     -   `HematologyParams`: ANC baseline, turnover rate, toxicity coefficients, neutropenia threshold.
     -   `NeuropathyParams`: Chronic neuropathy cumulative dose threshold in mg/m^2 (e.g., 850.0 mg/m^2). The absolute threshold in mg used by the simulation is calculated using the patient's BSA.
     -   `DosingParams`: Maximum doses per cycle/day, BSA, minimum days between Oxaliplatin.
     -   `UtilityParams`: Baseline utility, penalties for neutropenia and neuropathy.
+    -   `EconomicsParams`: Costs for drugs (5FU, Oxaliplatin), daily fees (infusion, pump), and a `cost_utility_factor` to scale the impact of cost on the overall utility objective.
     -   `OptimizationParams`: Simulation horizon and time step (name is a remnant).
     -   `FOLFOXParams`: Top-level class holding all parameter groups.
     -   Includes logic to load parameters from a YAML configuration file.
@@ -73,3 +74,14 @@ After running the simulation, the following outputs will be generated in the `ou
     -   `anc_plot.png`: Plot showing ANC over time, including the severe neutropenia threshold.
     -   `neuropathy_plot.png`: Plot showing the acute and chronic neuropathy flags over time, along with the cumulative Oxaliplatin dose and threshold.
     -   `utility_plot.png`: Plot showing the calculated utility score over time.
+
+### Objective Function
+
+The implicit objective is to **maximize the average utility** over the simulation horizon. The utility at each time step is calculated as:
+
+`Utility(t) = Baseline Utility + Penalty_Neutropenia(t) + Penalty_Neuropathy(t) - (Daily_Cost(t) * Cost_Utility_Factor)`
+
+Where:
+- Penalties are negative values applied if the respective condition (severe neutropenia, any neuropathy) is met at time `t`.
+- `Daily_Cost(t)` includes drug costs (5FU, Oxaliplatin) and applicable fees (infusion, pump) for day `t`.
+- `Cost_Utility_Factor` is a parameter defined in `economics` section of the config/params, controlling how much cost negatively impacts the utility score. A higher value makes the optimization prioritize lower cost more heavily.

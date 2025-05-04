@@ -31,13 +31,13 @@ class FOLFOXModel:
         self.chronic_neuro_thresh_mg = params.neuropathy.chronic_neuropathy_threshold_mg_m2 * self.bsa_m2 
         self.severe_neutropenia_thresh = params.hematology.severe_neutropenia_threshold
 
-    def get_dosing_schedule(self) -> (np.ndarray, np.ndarray):
-        """Creates a basic, repeating 14-day FOLFOX dosing schedule.
-           Day 1: Max Oxaliplatin, Max 5FU
-           Day 2: Max 5FU
-           Days 3-14: No dose
-           Repeats every 14 days.
+    def get_dosing_schedule(self, num_cycles_to_administer: int) -> (np.ndarray, np.ndarray):
+        """Creates a basic, repeating 14-day FOLFOX dosing schedule
+           for a specified number of cycles.
            
+           Args:
+               num_cycles_to_administer: The number of 14-day cycles to apply.
+
            Returns:
                Tuple[np.ndarray, np.ndarray]: dose_5fu, dose_ox arrays for the horizon
         """
@@ -46,9 +46,11 @@ class FOLFOXModel:
         dose_ox = np.zeros(self.T)
         
         cycle_len_days = 14
-        num_cycles = int(np.ceil(self.horizon / cycle_len_days))
+        # Total potential cycles in horizon (not used for looping here)
+        # num_cycles = int(np.ceil(self.horizon / cycle_len_days))
         
-        for cycle in range(num_cycles):
+        # Loop only for the number of cycles to administer
+        for cycle in range(num_cycles_to_administer):
             start_day_idx = int(cycle * cycle_len_days / self.dt)
             day1_idx = start_day_idx
             day2_idx = start_day_idx + 1
@@ -64,15 +66,18 @@ class FOLFOXModel:
                 
         return dose_5fu, dose_ox
 
-    def simulate(self) -> Dict[str, np.ndarray]: 
-        """Runs the simulation step-by-step.
+    def simulate(self, num_cycles_to_administer: int) -> Dict[str, np.ndarray]:
+        """Runs the simulation step-by-step for a given number of cycles.
         
+           Args:
+               num_cycles_to_administer: The number of 14-day cycles to apply.
+
            Returns:
                Dict[str, np.ndarray]: Dictionary containing time-series results.
         """
         
-        # Get predefined dosing schedule
-        dose_5fu, dose_ox = self.get_dosing_schedule()
+        # Get predefined dosing schedule for the specified number of cycles
+        dose_5fu, dose_ox = self.get_dosing_schedule(num_cycles_to_administer)
         
         # Initialize state arrays
         time = np.arange(self.T + 1) * self.dt # T+1 to include final state
@@ -81,16 +86,19 @@ class FOLFOXModel:
         acute_neuropathy = np.zeros(self.T + 1, dtype=int)
         chronic_neuropathy = np.zeros(self.T + 1, dtype=int)
         utility = np.zeros(self.T + 1)
+        daily_cost = np.zeros(self.T) # Cost for each day (t=0 to T-1)
+        total_cost = np.zeros(self.T + 1) # Cumulative cost
         
         # Initial conditions
         anc[0] = self.params.hematology.anc_baseline
+        utility[0] = self.params.utility.baseline_utility # Utility at t=0
         cum_ox[0] = 0
         acute_neuropathy[0] = 0
         chronic_neuropathy[0] = 0
-        utility[0] = self.params.utility.baseline_utility
+        total_cost[0] = 0
         
         # Simulation loop
-        for t in range(self.T): # Loop from 0 to T-1
+        for t in range(self.T):
             # 1. Calculate ANC dynamics (using Euler forward method)
             anc_production = self.params.hematology.k_out * self.params.hematology.anc_baseline
             anc_loss = self.params.hematology.k_out * anc[t]
@@ -114,7 +122,21 @@ class FOLFOXModel:
             else:
                 chronic_neuropathy[t+1] = chronic_neuropathy[t] # Persists if already occurred
                 
-            # 4. Calculate Utility
+            # 4. Calculate Daily Cost
+            cost_today = 0
+            # Drug costs
+            cost_today += dose_5fu[t] * self.params.economics.cost_5fu_mg
+            cost_today += dose_ox[t] * self.params.economics.cost_ox_mg
+            # Fee costs
+            if dose_5fu[t] > 0 or dose_ox[t] > 0: # Infusion fee if any drug given
+                 cost_today += self.params.economics.cost_infusion_day
+            if dose_5fu[t] > 0: # Pump fee only if 5FU given
+                 cost_today += self.params.economics.cost_pump_day
+            daily_cost[t] = cost_today
+            total_cost[t+1] = total_cost[t] + cost_today
+
+            # 5. Calculate Utility
+            # Start with baseline
             current_utility = self.params.utility.baseline_utility
             # Penalty for severe neutropenia
             if anc[t+1] < self.severe_neutropenia_thresh:
@@ -122,22 +144,28 @@ class FOLFOXModel:
             # Penalty for any neuropathy (acute OR chronic)
             if acute_neuropathy[t+1] == 1 or chronic_neuropathy[t+1] == 1:
                 current_utility += self.params.utility.neuropathy_penalty
+            # Penalty for cost incurred today
+            current_utility -= daily_cost[t] * self.params.economics.cost_utility_factor
+            
             utility[t+1] = current_utility
             
-        # Return results (excluding the dose arrays used for calculation)
+        # Return results dictionary
         results = {
             "time": time,
-            "anc": anc,
-            "dose_5fu": np.append(dose_5fu, 0), # Pad dose arrays to match time length
+            "dose_5fu": np.append(dose_5fu, 0), # Pad dose arrays for length T+1
             "dose_ox": np.append(dose_ox, 0),
+            "anc": anc,
             "acute_neuropathy": acute_neuropathy,
             "chronic_neuropathy": chronic_neuropathy,
             "cum_ox": cum_ox,
             "utility": utility,
-            "chronic_neuropathy_threshold_mg": np.full(self.T + 1, self.chronic_neuro_thresh_mg) # Add threshold to results
+            "chronic_neuropathy_threshold_mg": np.full(self.T + 1, self.chronic_neuro_thresh_mg),
+            "daily_cost": np.append(daily_cost, 0), # Pad cost array for length T+1
+            "total_cost": total_cost
         }
         return results
 
-    def solve(self) -> Dict[str, np.ndarray]:
-        """Runs the simulation (wrapper for simulate)."""
-        return self.simulate()
+    # Keep solve method for compatibility, pass through the cycle count
+    def solve(self, num_cycles_to_administer: int) -> Dict[str, np.ndarray]:
+        """Runs the simulation for a specific number of cycles (wrapper for simulate)."""
+        return self.simulate(num_cycles_to_administer)

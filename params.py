@@ -54,15 +54,25 @@ class SolverParams:
 @dataclass
 class OptimizationParams:
     """Parameters for optimization setup."""
-    horizon_days: int                  # Treatment horizon (days)
-    step_size_days: int                # Step size for discretization (days)
+    horizon_days: int = 180 # ~6 months
+    step_size_days: float = 1.0 # Simulate day-by-day
 
 
 @dataclass
 class OutputParams:
     """Parameters for output configuration."""
-    results_dir: str = "results"  # Directory for output files
-    save_plots: bool = True       # Whether to save plots
+    results_dir: str = "results"
+    save_plots: bool = True # Default to generating plots
+
+
+@dataclass
+class EconomicsParams:
+    """Parameters related to treatment costs."""
+    cost_5fu_mg: float = 0.00442
+    cost_ox_mg: float = 0.10
+    cost_infusion_day: float = 250.0 # Applied if any chemo given
+    cost_pump_day: float = 12.0     # Applied if 5FU given
+    cost_utility_factor: float = 0.001 # Converts $ to utility penalty (tune this)
 
 
 @dataclass
@@ -75,6 +85,7 @@ class FOLFOXParams:
     solver: SolverParams
     optimization: OptimizationParams
     outputs: OutputParams
+    economics: EconomicsParams
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> FOLFOXParams:
@@ -90,6 +101,7 @@ class FOLFOXParams:
                 step_size_days=data["optimization"]["step_size_days"],
             ),
             outputs=OutputParams(**data["outputs"]),
+            economics=EconomicsParams(**data["economics"]),
         )
 
     @classmethod

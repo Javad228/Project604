@@ -20,9 +20,11 @@ class FOLFOXAnalyzer:
     def __init__(self, params: FOLFOXParams, results: Dict[str, Any]):
         """Initialize with parameters and simulation results."""
         self.params = params
-        self.results = results # Expects keys: time, dose_5fu, dose_ox, anc, acute_neuropathy, chronic_neuropathy, cum_ox, utility
+        self.results = results # Expects keys: time, dose_5fu, dose_ox, anc, acute_neuropathy, chronic_neuropathy, cum_ox, utility, daily_cost, total_cost
         self.output_dir = Path(params.outputs.results_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        # Calculate dt from time array for summary statistics
+        self.dt = results['time'][1] - results['time'][0] if len(results['time']) > 1 else 1.0
     
     def export_csv(self) -> Path:
         """Export simulation results to CSV file."""
@@ -40,7 +42,9 @@ class FOLFOXAnalyzer:
             "Acute_Neuropathy(0/1)": self.results["acute_neuropathy"],
             "Chronic_Neuropathy(0/1)": self.results["chronic_neuropathy"],
             "Cumulative_Oxaliplatin_mg": self.results["cum_ox"],
-            "Utility": self.results["utility"]
+            "Utility": self.results["utility"],
+            "Daily_Cost": self.results["daily_cost"], # Added
+            "Total_Cost": self.results["total_cost"] # Added
         }
         
         # Create DataFrame and export
@@ -191,55 +195,64 @@ class FOLFOXAnalyzer:
         
         return fig
     
-    def analyze(self) -> Dict[str, Any]:
-        """Analyze results and generate outputs."""
-        analysis_results = {
-            "summary": {},
-            "csv_path": None,
-            "plots": []
-        }
+    def analyze(self, generate_plots: bool = None) -> Dict[str, Any]:
+        """Perform analysis: export data, calculate summary, generate plots."""
+        # Use generate_plots argument if provided, else use param file setting
+        if generate_plots is None:
+             generate_plots = self.params.outputs.save_plots
+             
+        analysis_results = {"plots": []}
         
-        # --- Calculate Summary Statistics --- 
-        time = np.array(self.results['time'])
-        anc = np.array(self.results['anc'])
-        utility = np.array(self.results['utility'])
-        cum_ox = np.array(self.results['cum_ox'])
-        chronic_neuro = np.array(self.results['chronic_neuropathy'])
+        # Export raw data
+        csv_path = self.export_csv()
+        analysis_results["csv_export_path"] = str(csv_path)
         
+        # Calculate summary statistics
+        time = self.results["time"]
+        anc = self.results["anc"]
+        utility = self.results["utility"]
+        chronic_neuro = self.results["chronic_neuropathy"]
+        daily_cost = self.results["daily_cost"]
+        total_cost = self.results["total_cost"]
+
         summary = {}
-        summary['cumulative_ox'] = cum_ox[-1] if len(cum_ox) > 0 else 0
-        summary['final_anc'] = anc[-1] if len(anc) > 0 else self.params.hematology.anc_baseline
-        summary['min_anc'] = np.min(anc) if len(anc) > 0 else self.params.hematology.anc_baseline
-        crit_thresh = self.params.hematology.severe_neutropenia_threshold
-        summary['days_severe_neutropenia'] = np.sum(anc < crit_thresh) if len(anc) > 0 else 0
-        summary['final_utility'] = utility[-1] if len(utility) > 0 else self.params.utility.baseline_utility
-        summary['mean_utility'] = np.mean(utility) if len(utility) > 0 else self.params.utility.baseline_utility
-        
-        # Find onset day for chronic neuropathy
-        chronic_flags = self.results['chronic_neuropathy']
-        onset_idx = np.where(chronic_flags == 1)[0]
-        summary['chronic_neuropathy_onset_day'] = time[onset_idx[0]] if len(onset_idx) > 0 else -1
-        # Add threshold used to summary
+        summary['min_anc'] = np.min(anc)
+        summary['cumulative_ox'] = self.results["cum_ox"][-1]
+        summary['final_anc'] = anc[-1]
+        severe_threshold = self.params.hematology.severe_neutropenia_threshold
+        # Calculate days * self.dt
+        summary['days_severe_neutropenia'] = np.sum(anc[1:] < severe_threshold) * self.dt 
+        summary['final_utility'] = utility[-1]
+        # Exclude t=0 from mean utility calculation
+        summary['mean_utility'] = np.mean(utility[1:]) if len(utility) > 1 else self.params.utility.baseline_utility 
+        chronic_onset_indices = np.where(chronic_neuro > 0.5)[0]
+        summary['chronic_neuropathy_onset_day'] = time[chronic_onset_indices[0]] if len(chronic_onset_indices) > 0 else -1
         summary['chronic_neuropathy_threshold_mg'] = self.results['chronic_neuropathy_threshold_mg'][0]
-        
-        # Removed tumor, QALY gain, cost calculations
+        # Add cost summaries
+        summary['total_cost'] = total_cost[-1]
+        # Mean daily cost over the days with actual treatment or simulation progress
+        summary['mean_daily_cost'] = np.mean(daily_cost) if len(daily_cost) > 0 else 0 
+
         analysis_results["summary"] = summary
+        summary_path = self.export_summary(summary)
+        analysis_results["summary_export_path"] = str(summary_path)
         
-        # --- Export Data --- 
-        analysis_results["csv_path"] = str(self.export_csv())
-        self.export_summary(summary) # Pass calculated summary
+        # Generate plots if requested
+        if generate_plots:
+            print("Generating plots...")
+            try:
+                fig_anc = self.plot_anc()
+                analysis_results["plots"].append(str(self.output_dir / "anc_curve.png"))
+                fig_neuro = self.plot_neuropathy()
+                analysis_results["plots"].append(str(self.output_dir / "neuropathy_curve.png"))
+                # fig_utility = self.plot_utility() # Add utility plot if desired
+                # analysis_results["plots"].append(str(self.output_dir / "utility_curve.png"))
+                # fig_cost = self.plot_cost() # Add cost plot if desired
+                # analysis_results["plots"].append(str(self.output_dir / "cost_curve.png"))
+                print(f"Plots saved to {self.output_dir}")
+            except Exception as e:
+                print(f"Error generating plots: {e}")
+                # import traceback
+                # traceback.print_exc()
         
-        # --- Generate Plots --- 
-        if self.params.outputs.save_plots:
-            plot_paths = []
-            # Removed plot_tumor call
-            self.plot_anc()
-            plot_paths.append(str(self.output_dir / "anc_curve.png"))
-            self.plot_neuropathy()
-            plot_paths.append(str(self.output_dir / "neuropathy_curve.png"))
-            self.plot_utility()
-            plot_paths.append(str(self.output_dir / "utility_curve.png"))
-            # TODO: Add plot for doses if needed
-            analysis_results["plots"] = plot_paths
-            
         return analysis_results
