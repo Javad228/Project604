@@ -1,0 +1,132 @@
+"""
+Simplified FOLFOX model for simulating body response.
+"""
+import numpy as np
+from typing import Dict
+from params import FOLFOXParams
+
+
+class FOLFOXModel:
+    """Simplified FOLFOX model for simulating body response."""
+
+    def __init__(self, params: FOLFOXParams):
+        """Initialize the model with parameters."""
+        self.params = params
+        self.dt = params.optimization.step_size_days
+        self.horizon = params.optimization.horizon_days
+        self.T = int(self.horizon / self.dt) # Number of steps
+
+        # Pre-calculate dose limits and thresholds in absolute mg
+        self.max_daily_5fu_mg = params.dosing.max_daily_5fu_mg_m2 * params.dosing.bsa_m2
+        self.max_single_ox_mg = params.dosing.max_single_ox_mg_m2 * params.dosing.bsa_m2
+        self.chronic_neuro_thresh_mg = params.neuropathy.chronic_neuropathy_threshold_mg
+        self.severe_neutropenia_thresh = params.hematology.severe_neutropenia_threshold
+
+    def get_dosing_schedule(self) -> (np.ndarray, np.ndarray):
+        """Creates a basic, repeating 14-day FOLFOX dosing schedule.
+           Day 1: Max Oxaliplatin, Max 5FU
+           Day 2: Max 5FU
+           Days 3-14: No dose
+           Repeats every 14 days.
+           
+           Returns:
+               Tuple[np.ndarray, np.ndarray]: dose_5fu, dose_ox arrays for the horizon
+        """
+        days = np.arange(self.T) * self.dt
+        dose_5fu = np.zeros(self.T)
+        dose_ox = np.zeros(self.T)
+        
+        cycle_len_days = 14
+        num_cycles = int(np.ceil(self.horizon / cycle_len_days))
+        
+        for cycle in range(num_cycles):
+            start_day_idx = int(cycle * cycle_len_days / self.dt)
+            day1_idx = start_day_idx
+            day2_idx = start_day_idx + 1
+            
+            if day1_idx < self.T:
+                # Apply Oxaliplatin only if min days passed (simplistic check)
+                if cycle == 0 or self.params.dosing.min_days_between_ox <= cycle_len_days:
+                     dose_ox[day1_idx] = self.max_single_ox_mg
+                dose_5fu[day1_idx] = self.max_daily_5fu_mg 
+            
+            if day2_idx < self.T:
+                dose_5fu[day2_idx] = self.max_daily_5fu_mg
+                
+        return dose_5fu, dose_ox
+
+    def simulate(self) -> Dict[str, np.ndarray]: 
+        """Runs the simulation step-by-step.
+        
+           Returns:
+               Dict[str, np.ndarray]: Dictionary containing time-series results.
+        """
+        
+        # Get predefined dosing schedule
+        dose_5fu, dose_ox = self.get_dosing_schedule()
+        
+        # Initialize state arrays
+        time = np.arange(self.T + 1) * self.dt # T+1 to include final state
+        anc = np.zeros(self.T + 1)
+        cum_ox = np.zeros(self.T + 1)
+        acute_neuropathy = np.zeros(self.T + 1, dtype=int)
+        chronic_neuropathy = np.zeros(self.T + 1, dtype=int)
+        utility = np.zeros(self.T + 1)
+        
+        # Initial conditions
+        anc[0] = self.params.hematology.anc_baseline
+        cum_ox[0] = 0
+        acute_neuropathy[0] = 0
+        chronic_neuropathy[0] = 0
+        utility[0] = self.params.utility.baseline_utility
+        
+        # Simulation loop
+        for t in range(self.T): # Loop from 0 to T-1
+            # 1. Calculate ANC dynamics (using Euler forward method)
+            anc_production = self.params.hematology.k_out * self.params.hematology.anc_baseline
+            anc_loss = self.params.hematology.k_out * anc[t]
+            toxicity_effect = (self.params.hematology.k_tox_5fu_dose * dose_5fu[t] + 
+                               self.params.hematology.k_tox_ox_dose * dose_ox[t]) * anc[t]
+            
+            d_anc_dt = anc_production - anc_loss - toxicity_effect
+            anc[t+1] = max(0, anc[t] + d_anc_dt * self.dt) # Ensure ANC is non-negative
+
+            # 2. Update Cumulative Oxaliplatin
+            cum_ox[t+1] = cum_ox[t] + dose_ox[t]
+
+            # 3. Update Neuropathy Status
+            # Acute: Occurs if Oxaliplatin was given in this step
+            acute_neuropathy[t+1] = 1 if dose_ox[t] > 0 else 0
+            
+            # Chronic: Occurs if cumulative dose exceeds threshold
+            if cum_ox[t+1] >= self.chronic_neuro_thresh_mg:
+                chronic_neuropathy[t+1] = 1
+            else:
+                chronic_neuropathy[t+1] = chronic_neuropathy[t] # Persists if already occurred
+                
+            # 4. Calculate Utility
+            current_utility = self.params.utility.baseline_utility
+            # Penalty for severe neutropenia
+            if anc[t+1] < self.severe_neutropenia_thresh:
+                current_utility += self.params.utility.neutropenia_penalty
+            # Penalty for any neuropathy (acute OR chronic)
+            if acute_neuropathy[t+1] == 1 or chronic_neuropathy[t+1] == 1:
+                current_utility += self.params.utility.neuropathy_penalty
+            utility[t+1] = current_utility
+            
+        # Return results (excluding the dose arrays used for calculation)
+        results = {
+            "time": time,
+            "anc": anc,
+            "dose_5fu": np.append(dose_5fu, 0), # Pad dose arrays to match time length
+            "dose_ox": np.append(dose_ox, 0),
+            "acute_neuropathy": acute_neuropathy,
+            "chronic_neuropathy": chronic_neuropathy,
+            "cum_ox": cum_ox,
+            "utility": utility
+        }
+        return results
+
+    def solve(self) -> Dict[str, np.ndarray]:
+        """Runs the simulation (wrapper for simulate)."""
+        return self.simulate()

@@ -1,0 +1,43 @@
+# FOLFOX Optimisation Parameters
+# All baseline tunable parameters for the optimal FOLFOX scheduler (Simplified Model)
+
+hematology:
+  # Hematological parameters
+  anc_baseline: 4.5           # Baseline absolute neutrophil count (10^9/L)
+  anc_crit: 1.0               # Critical ANC threshold (10^9/L)
+  k_out: 0.15                 # Neutrophil turnover rate constant
+  k_tox_5fu_dose: 1.0e-5      # Toxicity coefficient per mg of 5-FU dose (PLACEHOLDER)
+  k_tox_ox_dose: 5.0e-5       # Toxicity coefficient per mg of Oxaliplatin dose (PLACEHOLDER)
+  severe_neutropenia_threshold: 1.0 # ANC threshold for severe neutropenia flag (10^9/L)
+
+neuropathy:
+  # Oxaliplatin-induced peripheral neuropathy (Simplified)
+  chronic_neuropathy_threshold_mg: 1404.0 # Absolute cumulative dose threshold (mg)
+
+dosing:
+  # Dosing constraints
+  max_daily_5fu_mg_m2: 2400   # Maximum daily 5-FU dose (mg/m²)
+  max_single_ox_mg_m2: 85     # Maximum single oxaliplatin dose (mg/m²)
+  min_days_between_ox: 14     # Minimum days between oxaliplatin doses
+  bsa_m2: 1.8                 # Body surface area (m²)
+
+utility:
+  # Utility (QALY) parameters (Simplified Additive Model)
+  baseline_utility: 0.76      # Baseline utility (no side effects)
+  neutropenia_penalty: -0.2   # Utility penalty for severe neutropenia
+  neuropathy_penalty: -0.24  # Utility penalty for any neuropathy
+
+solver:
+  # Solver parameters
+  tol: 1e-6                   # Solver tolerance
+  max_iter: 3000              # Maximum solver iterations
+  
+optimization:
+  # Optimization parameters
+  horizon_days: 180           # Treatment horizon (days)
+  step_size_days: 1           # Step size for discretization (days)
+
+outputs:
+  # Output configuration
+  results_dir: "results"      # Directory for output files
+  save_plots: true            # Whether to save plots
