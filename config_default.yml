@@ -31,7 +31,7 @@ utility:
 solver:
   # Solver parameters
   tol: 1e-6                   # Solver tolerance
-  max_iter: 3000              # Maximum solver iterations
+  max_iter: 30000              # Maximum solver iterations
   
 optimization:
   # Optimization parameters

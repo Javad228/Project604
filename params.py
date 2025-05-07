@@ -66,6 +66,20 @@ class OutputParams:
 
 
 @dataclass
+class TumorParams:
+    """Parameters for tumor growth and response to treatment."""
+    initial_size: float = 100.0  # Initial tumor size (arbitrary units, e.g., mm^3)
+    growth_rate: float = 0.01    # Natural tumor growth rate (per day)
+    E_max: float = 0.8           # Maximum possible kill-rate achievable
+    EC_50: float = 70.0          # AUC that gives 50% of E_max
+    hill_coef: float = 1.2       # Hill coefficient (h) that controls steepness of effect
+    clearance_ox_L_h: float = 8.5 # Oxaliplatin clearance (4.7 L/h/m² * BSA = ~8.5 L/h for BSA=1.8)
+    clearance_5fu_L_h: float = 4.5 # 5-FU clearance (2.5 L/h/m² * BSA = ~4.5 L/h for BSA=1.8) 
+    alpha_ox: float = 0.015      # Potency scaling factor for oxaliplatin
+    alpha_5fu: float = 0.005     # Potency scaling factor for 5-FU
+    tumor_weight_in_utility: float = 0.1  # Weight of tumor size in utility calculation
+
+@dataclass
 class EconomicsParams:
     """Parameters related to treatment costs."""
     cost_5fu_mg: float = 0.00442
@@ -86,10 +100,14 @@ class FOLFOXParams:
     optimization: OptimizationParams
     outputs: OutputParams
     economics: EconomicsParams
+    tumor: TumorParams
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> FOLFOXParams:
         """Create parameters from dictionary."""
+        # Handle tumor params with defaults if not present in data
+        tumor_params = data.get("tumor", {})
+        
         return FOLFOXParams(
             hematology=HematologyParams(**data["hematology"]),
             neuropathy=NeuropathyParams(**data["neuropathy"]),
@@ -102,6 +120,7 @@ class FOLFOXParams:
             ),
             outputs=OutputParams(**data["outputs"]),
             economics=EconomicsParams(**data["economics"]),
+            tumor=TumorParams(**tumor_params),
         )
 
     @classmethod

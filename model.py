@@ -78,6 +78,7 @@ class FOLFOXModel:
         
         # Get predefined dosing schedule for the specified number of cycles
         dose_5fu, dose_ox = self.get_dosing_schedule(num_cycles_to_administer)
+
         
         # Initialize state arrays
         time = np.arange(self.T + 1) * self.dt # T+1 to include final state
@@ -88,6 +89,9 @@ class FOLFOXModel:
         utility = np.zeros(self.T + 1)
         daily_cost = np.zeros(self.T) # Cost for each day (t=0 to T-1)
         total_cost = np.zeros(self.T + 1) # Cumulative cost
+        tumor_size = np.zeros(self.T + 1) # Tumor size over time
+        kill_rate = np.zeros(self.T) # Kill rate at each time step
+        eff_auc = np.zeros(self.T) # Effective AUC at each time step
         
         # Initial conditions
         anc[0] = self.params.hematology.anc_baseline
@@ -96,6 +100,7 @@ class FOLFOXModel:
         acute_neuropathy[0] = 0
         chronic_neuropathy[0] = 0
         total_cost[0] = 0
+        tumor_size[0] = self.params.tumor.initial_size # Initial tumor size
         
         # Simulation loop
         for t in range(self.T):
@@ -121,8 +126,31 @@ class FOLFOXModel:
                 chronic_neuropathy[t+1] = 1
             else:
                 chronic_neuropathy[t+1] = chronic_neuropathy[t] # Persists if already occurred
+            
+            # 4. Calculate tumor dynamics using E-max/Hill equation
+            # Convert dose to AUC using the simple PK shortcut: AUC ≈ Dose/Clearance
+            if dose_ox[t] > 0 or dose_5fu[t] > 0:
+                # Calculate the AUC for each drug
+                auc_ox = dose_ox[t] / self.params.tumor.clearance_ox_L_h
+                auc_5fu = dose_5fu[t] / self.params.tumor.clearance_5fu_L_h
                 
-            # 4. Calculate Daily Cost
+                # Combine the two AUCs into a single "effective exposure" using the α-weights
+                eff_auc[t] = self.params.tumor.alpha_ox * auc_ox + self.params.tumor.alpha_5fu * auc_5fu
+                
+                # Calculate kill rate using the E-max/Hill equation
+                numerator = self.params.tumor.E_max * (eff_auc[t] ** self.params.tumor.hill_coef)
+                denominator = (eff_auc[t] ** self.params.tumor.hill_coef) + (self.params.tumor.EC_50 ** self.params.tumor.hill_coef)
+                kill_rate[t] = numerator / denominator if denominator > 0 else 0
+            else:
+                eff_auc[t] = 0
+                kill_rate[t] = 0
+            
+            # Update tumor size (growth - kill)
+            growth = self.params.tumor.growth_rate * tumor_size[t]
+            kill = kill_rate[t] * tumor_size[t]
+            tumor_size[t+1] = max(0, tumor_size[t] + (growth - kill) * self.dt) # Ensure non-negative
+                
+            # 5. Calculate Daily Cost
             cost_today = 0
             # Drug costs
             cost_today += dose_5fu[t] * self.params.economics.cost_5fu_mg
@@ -135,7 +163,7 @@ class FOLFOXModel:
             daily_cost[t] = cost_today
             total_cost[t+1] = total_cost[t] + cost_today
 
-            # 5. Calculate Utility
+            # 6. Calculate Utility (now incorporating tumor size penalty)
             # Start with baseline
             current_utility = self.params.utility.baseline_utility
             # Penalty for severe neutropenia
@@ -146,6 +174,9 @@ class FOLFOXModel:
                 current_utility += self.params.utility.neuropathy_penalty
             # Penalty for cost incurred today
             current_utility -= daily_cost[t] * self.params.economics.cost_utility_factor
+            # Penalty for tumor size (normalized by initial size)
+            tumor_penalty = -self.params.tumor.tumor_weight_in_utility * (tumor_size[t+1] / self.params.tumor.initial_size)
+            current_utility += tumor_penalty
             
             utility[t+1] = current_utility
             
@@ -161,7 +192,10 @@ class FOLFOXModel:
             "utility": utility,
             "chronic_neuropathy_threshold_mg": np.full(self.T + 1, self.chronic_neuro_thresh_mg),
             "daily_cost": np.append(daily_cost, 0), # Pad cost array for length T+1
-            "total_cost": total_cost
+            "total_cost": total_cost,
+            "tumor_size": tumor_size,
+            "kill_rate": np.append(kill_rate, 0), # Pad kill_rate array for length T+1
+            "effective_auc": np.append(eff_auc, 0) # Pad effective_auc array for length T+1
         }
         return results
 

@@ -51,6 +51,16 @@ def parse_args() -> argparse.Namespace:
         help="Patient height in cm (overrides config)"
     )
     
+    # Disease and hematology parameters
+    parser.add_argument(
+        "--anc-baseline", type=float, default=None,
+        help="Baseline absolute neutrophil count (10^9/L) (overrides config)"
+    )
+    parser.add_argument(
+        "--tumor-size", type=float, default=None,
+        help="Initial tumor size (arbitrary units) (overrides config)"
+    )
+    
     # Output options
     parser.add_argument(
         "--output", "-o", default="results",
@@ -99,6 +109,20 @@ def main() -> int:
              return 1
         overrides.setdefault("dosing", {})["patient_height_cm"] = args.height
         print(f"Overriding patient height to: {args.height} cm")
+        
+    # ANC baseline and tumor size overrides
+    if args.anc_baseline is not None:
+        if args.anc_baseline <= 0:
+            print("Error: ANC baseline must be positive.", file=sys.stderr)
+            return 1
+        overrides.setdefault("hematology", {})["anc_baseline"] = args.anc_baseline
+        print(f"Overriding ANC baseline to: {args.anc_baseline} 10^9/L")
+    if args.tumor_size is not None:
+        if args.tumor_size <= 0:
+            print("Error: Initial tumor size must be positive.", file=sys.stderr)
+            return 1
+        overrides.setdefault("tumor", {})["initial_size"] = args.tumor_size
+        print(f"Overriding initial tumor size to: {args.tumor_size} units")
 
     # --- Update params based on CLI flags ---
     # Ensure plotting flag overrides config
@@ -117,6 +141,8 @@ def main() -> int:
     print("\nSimulation Setup:")
     print(f"  Horizon: {params.optimization.horizon_days} days")
     print(f"  Step size: {params.optimization.step_size_days} days")
+    print(f"  ANC baseline: {params.hematology.anc_baseline} 10^9/L")
+    print(f"  Initial tumor size: {params.tumor.initial_size} units")
     
     # Calculate and print BSA based on potentially overridden values
     try:
