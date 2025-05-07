@@ -195,6 +195,41 @@ class FOLFOXAnalyzer:
         
         return fig
 
+    def plot_utility_comparison(self) -> Figure:
+        """Plot both tumor penalty and total utility on separate subplots."""
+        time = self.results["time"]
+        utility = self.results["utility"]
+        tumor_size = self.results["tumor_size"]
+        
+        # Calculate tumor penalty for each time step
+        tumor_penalty = np.array([1.0 / (1.0 + 2 * abs(size)) for size in tumor_size])
+        
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
+        
+        # Plot tumor penalty
+        ax1.plot(time, tumor_penalty, 'r-', linewidth=2)
+        ax1.set_ylabel("Tumor Penalty")
+        ax1.set_title("Tumor Penalty Over Time (1/(1 + 2*|tumor_size|))")
+        ax1.grid(True)
+        
+        # Plot total utility
+        ax2.plot(time, utility, 'g-', linewidth=2)
+        ax2.set_xlabel("Time (days)")
+        ax2.set_ylabel("Total Utility")
+        ax2.set_title("Total Utility Over Time")
+        ax2.grid(True)
+        ax2.axhline(y=self.params.utility.baseline_utility, color='grey', linestyle=':', 
+                   label=f"Baseline ({self.params.utility.baseline_utility:.2f})")
+        ax2.legend(loc='best')
+        
+        plt.tight_layout()
+        fig_path = self.output_dir / "utility_comparison.png"
+        plt.savefig(fig_path)
+        plt.close()
+        
+        print(f"Utility comparison plot saved to {fig_path}")
+        return fig
+        
     def plot_tumor_size(self) -> Figure:
         """Plot tumor size over time and save to file."""
         time = self.results["time"]

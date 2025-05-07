@@ -65,6 +65,22 @@ class FOLFOXModel:
                 dose_5fu[day2_idx] = self.max_daily_5fu_mg
                 
         return dose_5fu, dose_ox
+    
+    
+    def reward(value, scale=1.0):
+        """
+        Compute a reward that increases as `value` approaches 0.
+
+        Args:
+            value (float): The input value.
+            scale (float): A positive constant to control how quickly
+                        the reward decays with |value|. Larger `scale`
+                        makes the reward drop off faster.
+
+        Returns:
+            float: Reward in (0, 1], equal to 1/(1 + scale * |value|).
+        """
+        return 1.0 / (1.0 + scale * abs(value))
 
     def simulate(self, num_cycles_to_administer: int) -> Dict[str, np.ndarray]:
         """Runs the simulation step-by-step for a given number of cycles.
@@ -155,7 +171,7 @@ class FOLFOXModel:
             # Update tumor size (growth - kill)
             growth = self.params.tumor.growth_rate * tumor_size[t]
             kill = kill_rate[t] * tumor_size[t]
-            print(f"Step {t}: growth={growth:.4f}, kill={kill:.4f}, kill_rate={kill_rate[t]:.4f}, tumor_size={tumor_size[t]:.4f}")
+            # print(f"Step {t}: growth={growth:.4f}, kill={kill:.4f}, kill_rate={kill_rate[t]:.4f}, tumor_size={tumor_size[t]:.4f}")
             tumor_size[t+1] = max(0, tumor_size[t] + (growth - kill) * self.dt) # Ensure non-negative
                 
             # 5. Calculate Daily Cost
@@ -181,9 +197,11 @@ class FOLFOXModel:
             if acute_neuropathy[t+1] == 1 or chronic_neuropathy[t+1] == 1:
                 current_utility += self.params.utility.neuropathy_penalty
             # Penalty for cost incurred today
-            current_utility -= daily_cost[t] * self.params.economics.cost_utility_factor
+            # current_utility -= daily_cost[t] * self.params.economics.cost_utility_factor
             # Penalty for tumor size (normalized by initial size)
-            tumor_penalty = -self.params.tumor.tumor_weight_in_utility * (tumor_size[t+1] / self.params.tumor.initial_size)
+                    
+
+            tumor_penalty = 1.0 / (1.0 + 2 * abs(tumor_size[t]))
             current_utility += tumor_penalty
             
             utility[t+1] = current_utility
@@ -211,3 +229,4 @@ class FOLFOXModel:
     def solve(self, num_cycles_to_administer: int) -> Dict[str, np.ndarray]:
         """Runs the simulation for a specific number of cycles (wrapper for simulate)."""
         return self.simulate(num_cycles_to_administer)
+
