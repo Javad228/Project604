@@ -127,27 +127,35 @@ class FOLFOXModel:
             else:
                 chronic_neuropathy[t+1] = chronic_neuropathy[t] # Persists if already occurred
             
-            # 4. Calculate tumor dynamics using E-max/Hill equation
+            # 4. Calculate tumor dynamics using E-max/Hill equation with drug persistence
             # Convert dose to AUC using the simple PK shortcut: AUC ≈ Dose/Clearance
-            if dose_ox[t] > 0 or dose_5fu[t] > 0:
-                # Calculate the AUC for each drug
-                auc_ox = dose_ox[t] / self.params.tumor.clearance_ox_L_h
-                auc_5fu = dose_5fu[t] / self.params.tumor.clearance_5fu_L_h
-                
-                # Combine the two AUCs into a single "effective exposure" using the α-weights
+            # Calculate the AUC for each drug
+            auc_ox = dose_ox[t] / self.params.tumor.clearance_ox_L_h
+            auc_5fu = dose_5fu[t] / self.params.tumor.clearance_5fu_L_h
+            
+            # Drug persistence: Add residual effect from previous days (simple exponential decay)
+            # If this is not the first day, add some persistence from previous effective AUC
+            persistence_factor = 0.7  # Drug effect decays by 30% per day
+            if t > 0:
+                eff_auc[t] = (self.params.tumor.alpha_ox * auc_ox + 
+                              self.params.tumor.alpha_5fu * auc_5fu + 
+                              eff_auc[t-1] * persistence_factor)
+            else:
                 eff_auc[t] = self.params.tumor.alpha_ox * auc_ox + self.params.tumor.alpha_5fu * auc_5fu
-                
-                # Calculate kill rate using the E-max/Hill equation
+            
+            # Calculate kill rate using the E-max/Hill equation
+            # Even if no drug given today, there may be residual effect
+            if eff_auc[t] > 0:
                 numerator = self.params.tumor.E_max * (eff_auc[t] ** self.params.tumor.hill_coef)
                 denominator = (eff_auc[t] ** self.params.tumor.hill_coef) + (self.params.tumor.EC_50 ** self.params.tumor.hill_coef)
-                kill_rate[t] = numerator / denominator if denominator > 0 else 0
+                kill_rate[t] = numerator / denominator
             else:
-                eff_auc[t] = 0
                 kill_rate[t] = 0
             
             # Update tumor size (growth - kill)
             growth = self.params.tumor.growth_rate * tumor_size[t]
             kill = kill_rate[t] * tumor_size[t]
+            print(f"Step {t}: growth={growth:.4f}, kill={kill:.4f}, kill_rate={kill_rate[t]:.4f}, tumor_size={tumor_size[t]:.4f}")
             tumor_size[t+1] = max(0, tumor_size[t] + (growth - kill) * self.dt) # Ensure non-negative
                 
             # 5. Calculate Daily Cost

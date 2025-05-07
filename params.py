@@ -69,7 +69,7 @@ class OutputParams:
 class TumorParams:
     """Parameters for tumor growth and response to treatment."""
     initial_size: float = 100.0  # Initial tumor size (arbitrary units, e.g., mm^3)
-    growth_rate: float = 0.01    # Natural tumor growth rate (per day)
+    growth_rate: float = 0.007    # Natural tumor growth rate (per day)
     E_max: float = 0.8           # Maximum possible kill-rate achievable
     EC_50: float = 70.0          # AUC that gives 50% of E_max
     hill_coef: float = 1.2       # Hill coefficient (h) that controls steepness of effect

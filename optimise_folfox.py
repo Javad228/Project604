@@ -60,6 +60,10 @@ def parse_args() -> argparse.Namespace:
         "--tumor-size", type=float, default=None,
         help="Initial tumor size (arbitrary units) (overrides config)"
     )
+    parser.add_argument(
+        "--tumor-growth", type=str, choices=["aggressive", "moderate", "slow"], default=None,
+        help="Tumor growth rate category (aggressive: ~10%/week, moderate: ~5%/month, slow: <1%/month)"
+    )
     
     # Output options
     parser.add_argument(
@@ -123,6 +127,16 @@ def main() -> int:
             return 1
         overrides.setdefault("tumor", {})["initial_size"] = args.tumor_size
         print(f"Overriding initial tumor size to: {args.tumor_size} units")
+        
+    # Handle tumor growth rate category selection
+    if args.tumor_growth is not None:
+        growth_rates = {
+            "aggressive": 0.014,  # ~10% per week (doubles in ~50 days)
+            "moderate": 0.007,   # ~5% per month (doubles in ~100 days)
+            "slow": 0.0023      # <1% per month (doubles in ~300 days)
+        }
+        overrides.setdefault("tumor", {})["growth_rate"] = growth_rates[args.tumor_growth]
+        print(f"Setting tumor growth rate to {args.tumor_growth}: {growth_rates[args.tumor_growth]:.5f} per day")
 
     # --- Update params based on CLI flags ---
     # Ensure plotting flag overrides config
