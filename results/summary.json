@@ -1,12 +1,12 @@
 {
-  "min_anc": 4.066941160433171,
-  "cumulative_ox": 954.1226336273551,
-  "final_anc": 4.499999989677358,
+  "min_anc": 4.066940909795435,
+  "cumulative_ox": 4611.59272919888,
+  "final_anc": 4.3366719738923445,
   "days_severe_neutropenia": 0,
-  "final_utility": 0.7190866557086595,
-  "mean_utility": 0.6868301462953935,
-  "chronic_neuropathy_onset_day": -1,
+  "final_utility": 0.5195462076520385,
+  "mean_utility": 0.5306984220551318,
+  "chronic_neuropathy_onset_day": 127,
   "chronic_neuropathy_threshold_mg": 1590.204389378925,
-  "total_cost": 3477.5612727161224,
-  "mean_daily_cost": 19.21304570561394
+  "total_cost": 16808.21281812791,
+  "mean_daily_cost": 41.91574268859833
 }

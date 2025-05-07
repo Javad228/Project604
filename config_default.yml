@@ -35,7 +35,7 @@ solver:
   
 optimization:
   # Optimization parameters
-  horizon_days: 180           # Treatment horizon (days)
+  horizon_days: 400           # Treatment horizon (days)
   step_size_days: 1           # Step size for discretization (days)
 
 outputs:
@@ -52,5 +52,5 @@ economics:
   cost_utility_factor: 0.001 # Adjust this to balance utility vs cost
 
 optimization:
-  horizon_days: 180
+  horizon_days: 400
   step_size_days: 1

@@ -77,7 +77,7 @@ class FOLFOXModel:
         """
         
         # Get predefined dosing schedule for the specified number of cycles
-        dose_5fu, dose_ox = self.get_dosing_schedule(num_cycles_to_administer)
+        dose_5fu, dose_ox = self.get_dosing_schedule(900)
 
         
         # Initialize state arrays

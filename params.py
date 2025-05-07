@@ -54,7 +54,7 @@ class SolverParams:
 @dataclass
 class OptimizationParams:
     """Parameters for optimization setup."""
-    horizon_days: int = 180 # ~6 months
+    horizon_days: int = 800 # ~6 months
     step_size_days: float = 1.0 # Simulate day-by-day
 
 
