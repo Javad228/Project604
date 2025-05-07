@@ -36,7 +36,7 @@ class FOLFOXAnalyzer:
             "5FU_Dose_mg": self.results["dose_5fu"],
             "Oxaliplatin_Dose_mg": self.results["dose_ox"],
             # Removed PK concentrations
-            # Removed Tumor Volume
+            "Tumor_Size": self.results["tumor_size"],
             "ANC_10^9_L": self.results["anc"],
             # Removed Neuropathy_Grade
             "Acute_Neuropathy(0/1)": self.results["acute_neuropathy"],
@@ -194,6 +194,23 @@ class FOLFOXAnalyzer:
         plt.close()
         
         return fig
+
+    def plot_tumor_size(self) -> Figure:
+        """Plot tumor size over time and save to file."""
+        time = self.results["time"]
+        tumor_size = self.results["tumor_size"]
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(time, tumor_size, color='brown', linewidth=2, label='Tumor Size')
+        ax.set_xlabel("Time (days)")
+        ax.set_ylabel("Tumor Size (arbitrary units)")
+        ax.set_title("Tumor Size Over Time")
+        ax.grid(True)
+        ax.legend(loc='best')
+        fig_path = self.output_dir / "tumor_size_curve.png"
+        plt.tight_layout()
+        plt.savefig(fig_path)
+        plt.close()
+        return fig
     
     def analyze(self, generate_plots: bool = None) -> Dict[str, Any]:
         """Perform analysis: export data, calculate summary, generate plots."""
@@ -245,6 +262,8 @@ class FOLFOXAnalyzer:
                 analysis_results["plots"].append(str(self.output_dir / "anc_curve.png"))
                 fig_neuro = self.plot_neuropathy()
                 analysis_results["plots"].append(str(self.output_dir / "neuropathy_curve.png"))
+                fig_tumor = self.plot_tumor_size()
+                analysis_results["plots"].append(str(self.output_dir / "tumor_size_curve.png"))
                 # fig_utility = self.plot_utility() # Add utility plot if desired
                 # analysis_results["plots"].append(str(self.output_dir / "utility_curve.png"))
                 # fig_cost = self.plot_cost() # Add cost plot if desired
